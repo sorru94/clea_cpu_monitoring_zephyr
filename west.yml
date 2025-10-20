@@ -11,10 +11,10 @@ manifest:
   projects:
     - name: zephyr
       remote: zephyrproject-rtos
-      revision: v4.1.0
+      revision: v4.2.1
       import: true
     - name: edgehog-device-manager
       remote: edgehog-device-manager
       repo-path: edgehog-zephyr-device.git
-      revision: v0.8.0
+      revision: v0.9.0
       import: true
