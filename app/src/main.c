@@ -27,7 +27,6 @@ LOG_MODULE_REGISTER(cpu_metrics_app, CONFIG_APP_LOG_LEVEL);
 #endif
 #include <edgehog_device/device.h>
 #include <edgehog_device/telemetry.h>
-#include <edgehog_device/wifi_scan.h>
 
 #include "eth.h"
 #include "generated_interfaces.h"
