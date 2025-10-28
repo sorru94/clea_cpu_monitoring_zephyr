@@ -1,0 +1,18 @@
+{
+    "interface_name": "com.example.poc.AmbientTemp",
+    "version_major": 0,
+    "version_minor": 1,
+    "type": "datastream",
+    "ownership": "device",
+    "aggregation": "individual",
+    "mappings": [
+      {
+        "endpoint": "/temp",
+        "type": "double",
+        "database_retention_policy": "use_ttl",
+        "database_retention_ttl": 5184000,
+        "explicit_timestamp": true,
+        "description": "SOC temperature in °C"
+      }
+    ]
+  }

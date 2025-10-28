@@ -7,14 +7,27 @@ manifest:
       url-base: https://github.com/zephyrproject-rtos
     - name: edgehog-device-manager
       url-base: https://github.com/edgehog-device-manager
+    - name: astarte-platform
+      url-base: https://github.com/astarte-platform
+    - name: secomind
+      url-base: https://github.com/secomind
 
   projects:
     - name: zephyr
       remote: zephyrproject-rtos
       revision: v4.2.1
       import: true
-    - name: edgehog-device-manager
+    - name: edgehog-zephyr-device
       remote: edgehog-device-manager
       repo-path: edgehog-zephyr-device.git
-      revision: v0.9.0
-      import: true
+      revision: release-0.9
+    - name: astarte-device-sdk-zephyr
+      remote: astarte-platform
+      repo-path: astarte-device-sdk-zephyr.git
+      path: astarte-device-sdk-zephyr
+      revision: release-0.9
+      west-commands: scripts/west-commands.yml
+    - name: zlib-zephyr
+      remote: secomind
+      revision: release-v1.3.1
+      path: modules/zlib

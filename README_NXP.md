@@ -111,12 +111,16 @@ received from the device and plot it in a couple of graphs.
 Navigate to the portal section and then under applications select create application.
 Insert a name and slug of your choice. Add the two interfaces you installed in the previous step in
 the required Astarte interfaces section. Then add a source URL where the application can be fetched.
-We include the application JavaScript source file in this repository in the `portal/main.mjs`
+We include the application JavaScript source file in this repository in the `portal/app.js`
 folder. However, you will need to self host the file and make it available to the portal
 application. It will need to be accessible through TLS and support Cross-origin resource sharing
 (CORS).
 
 ![Application creation.](/doc/images/application_creation.png)
+
+The application reported in this repo is a slightly modified and pre-compiled version of the
+[CPU monitoring example](https://github.com/clea-platform/clea-examples/tree/master/cpu-monitoring-example)
+that can be found in the Clea examples repo.
 
 ### 3.4 Creating an organization and accessing portal
 

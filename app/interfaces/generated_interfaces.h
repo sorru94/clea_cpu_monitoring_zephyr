@@ -17,6 +17,7 @@
 
 // Interface names should resemble as closely as possible their respective .json file names.
 // NOLINTBEGIN(readability-identifier-naming)
+extern const astarte_interface_t com_example_poc_AmbientTemp;
 extern const astarte_interface_t com_example_poc_CpuMetrics;
 extern const astarte_interface_t com_example_poc_CpuTemp;
 // NOLINTEND(readability-identifier-naming)
