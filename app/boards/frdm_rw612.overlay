@@ -1,0 +1,39 @@
+/*
+ * (C) Copyright 2025, SECO Mind Srl
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+    fstab {
+        compatible = "zephyr,fstab";
+        lfs1: lfs1 {
+            compatible = "zephyr,fstab,littlefs";
+            mount-point = "/lfs1";
+            partition = <&config_partition>;
+            automount;
+            read-size = <16>;
+            prog-size = <16>;
+            cache-size = <64>;
+            lookahead-size = <32>;
+            block-cycles = <512>;
+        };
+    };
+};
+
+&w25q512jvfiq {
+	partitions {
+		astarte_partition: partition@3E00000 {
+			label = "astarte";
+			reg = <0x03E00000 DT_SIZE_K(128)>;
+		};
+		edgehog_partition: partition@3E20000 {
+			label = "edgehog";
+			reg = <0x03E20000 DT_SIZE_K(128)>;
+		};
+		config_partition: partition@3E40000 {
+			label = "configuration";
+			reg = <0x03E40000 DT_SIZE_K(24)>;
+		};
+	};
+};

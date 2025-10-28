@@ -1,0 +1,18 @@
+# (C) Copyright 2024, SECO Mind Srl
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# This file contains all the west extension commands private to this project.
+# It should only be included in the `west.yml` manifest of the Astarte device
+
+west-commands:
+  - file: scripts/clean.py
+    commands:
+      - name: clean
+        class: WestCommandClean
+        help: clean build artifacts
+  - file: scripts/format.py
+    commands:
+      - name: format
+        class: WestCommandFormat
+        help: format the source files (clang-format)

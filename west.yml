@@ -7,6 +7,8 @@ manifest:
       url-base: https://github.com/zephyrproject-rtos
     - name: edgehog-device-manager
       url-base: https://github.com/edgehog-device-manager
+    - name: sorru94
+      url-base: https://github.com/sorru94
 
   projects:
     - name: zephyr
@@ -14,7 +16,6 @@ manifest:
       revision: v4.2.1
       import: true
     - name: edgehog-device-manager
-      remote: edgehog-device-manager
+      remote: sorru94
       repo-path: edgehog-zephyr-device.git
-      revision: v0.9.0
-      import: true
+      revision: small-fixes-to-scripts

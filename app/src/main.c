@@ -28,8 +28,14 @@ LOG_MODULE_REGISTER(cpu_metrics_app, CONFIG_APP_LOG_LEVEL);
 #include <edgehog_device/device.h>
 #include <edgehog_device/telemetry.h>
 
+#if defined(CONFIG_WIFI)
+#include "wifi.h"
+#else
 #include "eth.h"
+#endif
 #include "generated_interfaces.h"
+
+#include "sample_config.h"
 
 /************************************************
  * Constants and defines
@@ -63,7 +69,17 @@ ZBUS_SUBSCRIBER_DEFINE(edgehog_ota_subscriber, EDGEHOG_OTA_SUBSCRIBER_NOTIFICATI
 ZBUS_CHAN_ADD_OBS(edgehog_ota_chan, edgehog_ota_subscriber, EDGEHOG_OTA_OBSERVER_NOTIFY_PRIORITY);
 #endif
 
+#define STATS_THREAD_STACK_SIZE 16384
+#define STATS_THREAD_PRIORITY 0
+K_THREAD_STACK_DEFINE(stats_thread_stack_area, STATS_THREAD_STACK_SIZE);
+static struct k_thread stats_thread_data;
+
+#ifdef CONFIG_CPU_TEMP_SENSOR
 static const struct device *const die_temp_sensor = DEVICE_DT_GET(DT_ALIAS(die_temp0));
+#endif
+#ifdef CONFIG_AMBIENT_TEMP_SENSOR
+static const struct device *const ambient_temp_sensor = DEVICE_DT_GET(DT_ALIAS(ambient_temp0));
+#endif
 
 enum device_tread_flags
 {
@@ -89,7 +105,7 @@ static void system_time_init(void);
  * @param arg2 Unused argument.
  * @param arg3 Unused argument.
  */
-static void edgehog_device_thread_entry_point(void *arg1, void *arg2, void *arg3);
+static void edgehog_device_thread_entry_point(void *device_id, void *cred_secr, void *arg3);
 #ifdef CONFIG_EDGEHOG_DEVICE_ZBUS_OTA_EVENT
 /**
  * @brief Entry point for the Zbus reception thread.
@@ -122,13 +138,13 @@ static void astarte_connection_callback(astarte_device_connection_event_t event)
  */
 static void astarte_disconnection_callback(astarte_device_disconnection_event_t event);
 /**
- * @brief Timer handler for the CPU statistics.
+ * @brief Entry point for the stats thread.
  *
- * @param dummy Unused.
+ * @param arg1 Unused argument.
+ * @param arg2 Unused argument.
+ * @param arg3 Unused argument.
  */
-void cpu_stats_timer_handler(struct k_timer *dummy);
-
-K_TIMER_DEFINE(cpu_usage_timer, cpu_stats_timer_handler, NULL);
+static void stats_thread_entry_point(void *arg1, void *arg2, void *arg3);
 
 /************************************************
  * Global functions definition
@@ -140,16 +156,44 @@ int main(void)
     LOG_INF("Edgehog device sample");
     LOG_INF("Board: %s", CONFIG_BOARD);
 
+    struct sample_config cfg_from_file = { 0 };
+    sample_config_get(&cfg_from_file);
+    LOG_INF("Configured device ID: %s", cfg_from_file.device_id);
+    LOG_INF("Configured credential secret: %s", cfg_from_file.credential_secret);
+#if defined(CONFIG_WIFI)
+    LOG_INF("Configured WiFi SSID: %s", cfg_from_file.wifi_ssid);
+    LOG_INF("Configured WiFi password: %s", cfg_from_file.wifi_pwd);
+#endif
+
+#ifdef CONFIG_CPU_TEMP_SENSOR
     if (!device_is_ready(die_temp_sensor)) {
         LOG_ERR("sensor: device %s not ready.", die_temp_sensor->name);
         return -ENODEV;
     }
+#endif
+#ifdef CONFIG_AMBIENT_TEMP_SENSOR
+    if (!device_is_ready(ambient_temp_sensor)) {
+        LOG_ERR("sensor: device %s not ready.", ambient_temp_sensor->name);
+        return -ENODEV;
+    }
+#endif
 
-    LOG_INF("Initializing Ethernet driver.");
-    if (eth_connect() != 0) {
-        LOG_ERR("Connectivity intialization failed!");
+#if defined(CONFIG_WIFI)
+    LOG_INF("Initializing WiFi driver."); // NOLINT
+    app_wifi_init();
+    k_sleep(K_SECONDS(5));
+    enum wifi_security_type sec = WIFI_SECURITY_TYPE_PSK;
+    if (app_wifi_connect(cfg_from_file.wifi_ssid, sec, cfg_from_file.wifi_pwd) != 0) {
+        LOG_ERR("Connectivity intialization failed!"); // NOLINT
         return -1;
     }
+#else
+    LOG_INF("Initializing Ethernet driver."); // NOLINT
+    if (eth_connect() != 0) {
+        LOG_ERR("Connectivity intialization failed!"); // NOLINT
+        return -1;
+    }
+#endif
 
     // Add TLS certificate for Astarte if required
 #if (!defined(CONFIG_ASTARTE_DEVICE_SDK_DEVELOP_USE_NON_TLS_HTTP)                                  \
@@ -169,9 +213,13 @@ int main(void)
     // Spawn a new thread for the Edgehog device
     k_thread_create(&edgehog_device_thread_data, edgehog_device_thread_stack_area,
         K_THREAD_STACK_SIZEOF(edgehog_device_thread_stack_area), edgehog_device_thread_entry_point,
-        NULL, NULL, NULL, EDGEHOG_DEVICE_THREAD_PRIORITY, 0, K_NO_WAIT);
+        cfg_from_file.device_id, cfg_from_file.credential_secret, NULL,
+        EDGEHOG_DEVICE_THREAD_PRIORITY, 0, K_NO_WAIT);
 
-    k_timer_start(&cpu_usage_timer, K_SECONDS(5), K_SECONDS(5));
+    // Spawn a new thread for the stats
+    k_thread_create(&stats_thread_data, stats_thread_stack_area,
+        K_THREAD_STACK_SIZEOF(stats_thread_stack_area), stats_thread_entry_point, NULL, NULL, NULL,
+        STATS_THREAD_PRIORITY, 0, K_NO_WAIT);
 
     // Wait for a predefined operational time.
     k_timeout_t finish_timeout = (CONFIG_SAMPLE_DURATION_SECONDS == 0)
@@ -180,12 +228,11 @@ int main(void)
     k_timepoint_t finish_timepoint = sys_timepoint_calc(finish_timeout);
     while (!K_TIMEOUT_EQ(sys_timepoint_timeout(finish_timepoint), K_NO_WAIT)) {
         k_timepoint_t timepoint = sys_timepoint_calc(K_MSEC(MAIN_THREAD_PERIOD_MS));
-        // Ensure the connectivity is still present
+#if !defined(CONFIG_WIFI)
         eth_poll();
+#endif
         k_sleep(sys_timepoint_timeout(timepoint));
     }
-
-    k_timer_stop(&cpu_usage_timer);
 
     // Signal to the Device threads that they should terminate.
     atomic_set_bit(&device_threads_flags, DEVICE_THREADS_FLAGS_TERMINATION);
@@ -226,21 +273,22 @@ static void system_time_init()
 #endif
 }
 
-static void edgehog_device_thread_entry_point(void *arg1, void *arg2, void *arg3)
+static void edgehog_device_thread_entry_point(void *device_id, void *cred_secr, void *arg3)
 {
-    ARG_UNUSED(arg1);
-    ARG_UNUSED(arg2);
     ARG_UNUSED(arg3);
 
     // Configuring the Astarte device used by the Edgehog device to communicate with the cloud
     // Edgehog instance. This device can also be leveraged by the user to send and receive data
     // through Astarte, check out the sample README for more information.
-    char cred_secr[ASTARTE_PAIRING_CRED_SECR_LEN + 1] = CONFIG_ASTARTE_CREDENTIAL_SECRET;
-    char device_id[ASTARTE_DEVICE_ID_LEN + 1] = CONFIG_ASTARTE_DEVICE_ID;
 
     const astarte_interface_t *interfaces[] = {
         &com_example_poc_CpuMetrics,
+#ifdef CONFIG_CPU_TEMP_SENSOR
         &com_example_poc_CpuTemp,
+#endif
+#ifdef CONFIG_AMBIENT_TEMP_SENSOR
+        &com_example_poc_AmbientTemp,
+#endif
     };
 
     astarte_device_config_t astarte_device_config = { 0 };
@@ -251,8 +299,8 @@ static void edgehog_device_thread_entry_point(void *arg1, void *arg2, void *arg3
     astarte_device_config.disconnection_cbk = astarte_disconnection_callback;
     astarte_device_config.interfaces = interfaces;
     astarte_device_config.interfaces_size = ARRAY_SIZE(interfaces);
-    memcpy(astarte_device_config.cred_secr, cred_secr, sizeof(cred_secr));
-    memcpy(astarte_device_config.device_id, device_id, sizeof(device_id));
+    memcpy(astarte_device_config.cred_secr, cred_secr, ASTARTE_PAIRING_CRED_SECR_LEN + 1);
+    memcpy(astarte_device_config.device_id, device_id, ASTARTE_DEVICE_ID_LEN + 1);
 
     edgehog_result_t eres = EDGEHOG_RESULT_OK;
 
@@ -378,67 +426,115 @@ static void astarte_disconnection_callback(astarte_device_disconnection_event_t 
     atomic_clear_bit(&device_threads_flags, DEVICE_THREADS_FLAGS_ASTARTE_CONNECTED);
 }
 
-void cpu_stats_timer_handler(struct k_timer *dummy)
+static void stats_thread_entry_point(void *arg1, void *arg2, void *arg3)
 {
-    int rc;
+    while (!atomic_test_bit(&device_threads_flags, DEVICE_THREADS_FLAGS_TERMINATION)) {
+        k_timepoint_t timepoint = sys_timepoint_calc(K_SECONDS(5));
 
-    if (!atomic_test_bit(&device_threads_flags, DEVICE_THREADS_FLAGS_ASTARTE_CONNECTED)) {
-        LOG_ERR("Skipping stats transmission, Astarte is not connected.");
-        return;
-    }
+        int rc;
+#ifdef CONFIG_ENABLE_TRANSMISSION
+        astarte_result_t ares = ASTARTE_RESULT_OK;
+#endif
 
-    int64_t timestamp_ms = 0;
-    struct timespec tspec;
-    rc = clock_gettime(CLOCK_REALTIME, &tspec);
-    if (rc != 0) {
-        LOG_ERR("Failed getting time.");
-    }
-    timestamp_ms = (int64_t) tspec.tv_sec * MSEC_PER_SEC + (tspec.tv_nsec / NSEC_PER_MSEC);
+        if (!atomic_test_bit(&device_threads_flags, DEVICE_THREADS_FLAGS_ASTARTE_CONNECTED)) {
+            LOG_ERR("Skipping stats transmission, Astarte is not connected.");
+            k_sleep(sys_timepoint_timeout(timepoint));
+            continue;
+        }
 
-    astarte_device_handle_t astarte_device = edgehog_device_get_astarte_device(edgehog_device);
+        int64_t timestamp_ms = 0;
+        struct timespec tspec;
+        rc = clock_gettime(CLOCK_REALTIME, &tspec);
+        if (rc != 0) {
+            LOG_ERR("Failed getting time.");
+        }
+        timestamp_ms = (int64_t) tspec.tv_sec * MSEC_PER_SEC + (tspec.tv_nsec / NSEC_PER_MSEC);
 
-    static uint64_t prev_total_cycles = 0U; // Non idle cycles
-    static uint64_t prev_execution_cycles = 0U; // Sum of idle + non idle cycles
+#ifdef CONFIG_ENABLE_TRANSMISSION
+        astarte_device_handle_t astarte_device = edgehog_device_get_astarte_device(edgehog_device);
+#endif
 
-    k_thread_runtime_stats_t stats;
-    rc = k_thread_runtime_stats_cpu_get(0, &stats);
-    if (rc) {
-        LOG_ERR("Failed reading CPU stats (%d)", rc);
-    } else {
-        double cpu_usage = 100.0f * (stats.total_cycles - prev_total_cycles)
-            / (stats.execution_cycles - prev_execution_cycles);
-        prev_total_cycles = stats.total_cycles;
-        prev_execution_cycles = stats.execution_cycles;
+        static uint64_t prev_total_cycles = 0U; // Non idle cycles
+        static uint64_t prev_execution_cycles = 0U; // Sum of idle + non idle cycles
 
-        LOG_INF("CPU usage: %.2lf %%", cpu_usage);
+        k_thread_runtime_stats_t stats;
+        rc = k_thread_runtime_stats_cpu_get(0, &stats);
+        if (rc) {
+            LOG_ERR("Failed reading CPU stats (%d)", rc);
+        } else {
+            double cpu_usage = 100.0f * (stats.total_cycles - prev_total_cycles)
+                / (stats.execution_cycles - prev_execution_cycles);
+            prev_total_cycles = stats.total_cycles;
+            prev_execution_cycles = stats.execution_cycles;
 
-        astarte_result_t ares
-            = astarte_device_send_individual(astarte_device, com_example_poc_CpuMetrics.name,
+            LOG_INF("CPU usage: %.2lf %%", cpu_usage);
+
+#ifdef CONFIG_ENABLE_TRANSMISSION
+            ares = astarte_device_send_individual(astarte_device, com_example_poc_CpuMetrics.name,
                 "/loadavg", astarte_data_from_double(cpu_usage), &timestamp_ms);
+            if (ares != ASTARTE_RESULT_OK) {
+                LOG_ERR("Astarte device transmission failure.");
+            }
+#else
+            LOG_INF("Data transmission is disabled.");
+#endif
+        }
+
+#ifdef CONFIG_CPU_TEMP_SENSOR
+        rc = sensor_sample_fetch(die_temp_sensor);
+        if (rc) {
+            LOG_ERR("Failed to fetch temperature sample (%d)", rc);
+            return;
+        }
+
+        struct sensor_value die_temp_val;
+        rc = sensor_channel_get(die_temp_sensor, SENSOR_CHAN_DIE_TEMP, &die_temp_val);
+        if (rc) {
+            LOG_ERR("Failed to get temperature reading (%d)", rc);
+            return;
+        }
+
+        double die_temp = sensor_value_to_double(&die_temp_val);
+        LOG_INF("CPU Die temperature: %.1f °C", die_temp);
+
+#ifdef CONFIG_ENABLE_TRANSMISSION
+        ares = astarte_device_send_individual(astarte_device, com_example_poc_CpuTemp.name, "/temp",
+            astarte_data_from_double(die_temp), &timestamp_ms);
         if (ares != ASTARTE_RESULT_OK) {
             LOG_ERR("Astarte device transmission failure.");
         }
-    }
+#else
+        LOG_INF("Data transmission is disabled.");
+#endif
+#endif
+#ifdef CONFIG_AMBIENT_TEMP_SENSOR
+        rc = sensor_sample_fetch_chan(ambient_temp_sensor, SENSOR_CHAN_AMBIENT_TEMP);
+        if (rc) {
+            LOG_ERR("Failed to fetch temperature sample (%d)", rc);
+            return;
+        }
 
-    rc = sensor_sample_fetch(die_temp_sensor);
-    if (rc) {
-        LOG_ERR("Failed to fetch temperature sample (%d)", rc);
-        return;
-    }
+        struct sensor_value ambient_temp_val;
+        rc = sensor_channel_get(ambient_temp_sensor, SENSOR_CHAN_AMBIENT_TEMP, &ambient_temp_val);
+        if (rc) {
+            LOG_ERR("Failed to get temperature reading (%d)", rc);
+            return;
+        }
 
-    struct sensor_value val;
-    rc = sensor_channel_get(die_temp_sensor, SENSOR_CHAN_DIE_TEMP, &val);
-    if (rc) {
-        LOG_ERR("Failed to get temperature reading (%d)", rc);
-        return;
-    }
+        double ambient_temp = sensor_value_to_double(&ambient_temp_val);
+        LOG_INF("Ambient temperature: %.1f °C", ambient_temp);
 
-    double die_temp = sensor_value_to_double(&val);
-    LOG_INF("CPU Die temperature: %.1f °C", die_temp);
+#ifdef CONFIG_ENABLE_TRANSMISSION
+        ares = astarte_device_send_individual(astarte_device, com_example_poc_AmbientTemp.name,
+            "/temp", astarte_data_from_double(ambient_temp), &timestamp_ms);
+        if (ares != ASTARTE_RESULT_OK) {
+            LOG_ERR("Astarte device transmission failure.");
+        }
+#else
+        LOG_INF("Data transmission is disabled.");
+#endif
+#endif
 
-    astarte_result_t ares = astarte_device_send_individual(astarte_device,
-        com_example_poc_CpuTemp.name, "/temp", astarte_data_from_double(die_temp), &timestamp_ms);
-    if (ares != ASTARTE_RESULT_OK) {
-        LOG_ERR("Astarte device transmission failure.");
+        k_sleep(sys_timepoint_timeout(timepoint));
     }
 }

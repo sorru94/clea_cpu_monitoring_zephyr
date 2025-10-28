@@ -4,14 +4,55 @@ endmenu
 
 menu "CPU metrics sample application"
 
+config GET_CONFIG_FROM_FLASH
+    bool "Collect the configuration from flash"
+    help
+        Collect the configuration from a file in the dedicated flash partition.
+
+config WIFI_SSID
+    string "WiFi SSID"
+	depends on WIFI
+    depends on !GET_CONFIG_FROM_FLASH
+    default ""
+	help
+	  WiFi access point SSID.
+
+config WIFI_PASSWORD
+    string "WiFi password"
+	depends on WIFI
+    depends on !GET_CONFIG_FROM_FLASH
+    default ""
+    help
+        WiFi access point password.
+
+config ENABLE_TRANSMISSION
+    bool "Enable sensor readings transmission"
+    default n
+    help
+        Enable transmission of sensor readings to Astarte.
+
+config CPU_TEMP_SENSOR
+    bool "CPU temperature sensor"
+    default n
+    help
+        Temperature sensor embedded within the CPU die.
+
+config AMBIENT_TEMP_SENSOR
+    bool "Ambient temperature sensor"
+    default n
+    help
+        Temperature sensor embedded within the ambient.
+
 config ASTARTE_DEVICE_ID
 	string "Astarte device ID"
+    depends on !GET_CONFIG_FROM_FLASH
     default ""
 	help
 	  Device ID to be used to connect to Astarte.
 
 config ASTARTE_CREDENTIAL_SECRET
     string "Astarte credential secret"
+    depends on !GET_CONFIG_FROM_FLASH
     default ""
     help
         The credential secret to be used to connect to Astarte.
