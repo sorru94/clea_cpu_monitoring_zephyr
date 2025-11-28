@@ -431,7 +431,7 @@ static void stats_thread_entry_point(void *arg1, void *arg2, void *arg3)
     while (!atomic_test_bit(&device_threads_flags, DEVICE_THREADS_FLAGS_TERMINATION)) {
         k_timepoint_t timepoint = sys_timepoint_calc(K_SECONDS(5));
 
-        int rc;
+        int ret;
 #ifdef CONFIG_ENABLE_TRANSMISSION
         astarte_result_t ares = ASTARTE_RESULT_OK;
 #endif
@@ -444,8 +444,8 @@ static void stats_thread_entry_point(void *arg1, void *arg2, void *arg3)
 
         int64_t timestamp_ms = 0;
         struct timespec tspec;
-        rc = clock_gettime(CLOCK_REALTIME, &tspec);
-        if (rc != 0) {
+        ret = clock_gettime(CLOCK_REALTIME, &tspec);
+        if (ret != 0) {
             LOG_ERR("Failed getting time.");
         }
         timestamp_ms = (int64_t) tspec.tv_sec * MSEC_PER_SEC + (tspec.tv_nsec / NSEC_PER_MSEC);
@@ -458,9 +458,9 @@ static void stats_thread_entry_point(void *arg1, void *arg2, void *arg3)
         static uint64_t prev_execution_cycles = 0U; // Sum of idle + non idle cycles
 
         k_thread_runtime_stats_t stats;
-        rc = k_thread_runtime_stats_cpu_get(0, &stats);
-        if (rc) {
-            LOG_ERR("Failed reading CPU stats (%d)", rc);
+        ret = k_thread_runtime_stats_cpu_get(0, &stats);
+        if (ret) {
+            LOG_ERR("Failed reading CPU stats (%d)", ret);
         } else {
             double cpu_usage = 100.0f * (stats.total_cycles - prev_total_cycles)
                 / (stats.execution_cycles - prev_execution_cycles);
@@ -481,16 +481,16 @@ static void stats_thread_entry_point(void *arg1, void *arg2, void *arg3)
         }
 
 #ifdef CONFIG_CPU_TEMP_SENSOR
-        rc = sensor_sample_fetch(die_temp_sensor);
-        if (rc) {
-            LOG_ERR("Failed to fetch temperature sample (%d)", rc);
+        ret = sensor_sample_fetch(die_temp_sensor);
+        if (ret) {
+            LOG_ERR("Failed to fetch temperature sample (%d)", ret);
             return;
         }
 
         struct sensor_value die_temp_val;
-        rc = sensor_channel_get(die_temp_sensor, SENSOR_CHAN_DIE_TEMP, &die_temp_val);
-        if (rc) {
-            LOG_ERR("Failed to get temperature reading (%d)", rc);
+        ret = sensor_channel_get(die_temp_sensor, SENSOR_CHAN_DIE_TEMP, &die_temp_val);
+        if (ret) {
+            LOG_ERR("Failed to get temperature reading (%d)", ret);
             return;
         }
 
@@ -508,16 +508,16 @@ static void stats_thread_entry_point(void *arg1, void *arg2, void *arg3)
 #endif
 #endif
 #ifdef CONFIG_AMBIENT_TEMP_SENSOR
-        rc = sensor_sample_fetch_chan(ambient_temp_sensor, SENSOR_CHAN_AMBIENT_TEMP);
-        if (rc) {
-            LOG_ERR("Failed to fetch temperature sample (%d)", rc);
+        ret = sensor_sample_fetch_chan(ambient_temp_sensor, SENSOR_CHAN_AMBIENT_TEMP);
+        if (ret) {
+            LOG_ERR("Failed to fetch temperature sample (%d)", ret);
             return;
         }
 
         struct sensor_value ambient_temp_val;
-        rc = sensor_channel_get(ambient_temp_sensor, SENSOR_CHAN_AMBIENT_TEMP, &ambient_temp_val);
-        if (rc) {
-            LOG_ERR("Failed to get temperature reading (%d)", rc);
+        ret = sensor_channel_get(ambient_temp_sensor, SENSOR_CHAN_AMBIENT_TEMP, &ambient_temp_val);
+        if (ret) {
+            LOG_ERR("Failed to get temperature reading (%d)", ret);
             return;
         }
 

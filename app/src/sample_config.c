@@ -78,30 +78,30 @@ static int update_wifi_configuration(char *fcontent,
 int sample_config_get(struct sample_config *cfg)
 {
 #if defined(CONFIG_GET_CONFIG_FROM_FLASH)
-    int rc;
+    int ret;
     char config_fname[MAX_PATH_LEN] = { 0 };
     char config_fcontent[MAX_CONFIG_FILE_SIZE] = { 0 };
 
-    rc = snprintf(
+    ret = snprintf(
         config_fname, sizeof(config_fname), "%s/configuration.json", mountpoint->mnt_point);
-    if (rc >= sizeof(config_fname)) {
-        LOG_ERR("FAIL: snprinf [rd:%d]", rc);
+    if (ret >= sizeof(config_fname)) {
+        LOG_ERR("FAIL: snprinf [rd:%d]", ret);
         goto out;
     }
 
-    rc = read_configuration_file(config_fname, config_fcontent);
-    if (rc < 0) {
+    ret = read_configuration_file(config_fname, config_fcontent);
+    if (ret < 0) {
         goto out;
     }
-    LOG_DBG("%s read content:%s (bytes: %d)", config_fname, config_fcontent, rc);
+    LOG_DBG("%s read content:%s (bytes: %d)", config_fname, config_fcontent, ret);
 
-    rc = parse_configuration_file(config_fcontent, cfg);
-    if (rc != 0) {
+    ret = parse_configuration_file(config_fcontent, cfg);
+    if (ret != 0) {
         goto out;
     }
 
 out:
-    return (rc != 0) ? -1 : 0;
+    return (ret != 0) ? -1 : 0;
 #else
     return copy_configuration(CONFIG_ASTARTE_DEVICE_ID, CONFIG_ASTARTE_CREDENTIAL_SECRET,
 #if defined(CONFIG_WIFI)
@@ -135,40 +135,40 @@ int sample_config_get_wifi_ssid(char output[static SAMPLE_CONFIG_WIFI_MAX_STRING
 int sample_config_update_wifi_creds(char ssid[static SAMPLE_CONFIG_WIFI_MAX_STRINGS],
     char pwd[static SAMPLE_CONFIG_WIFI_MAX_STRINGS])
 {
-    int rc;
+    int ret;
     char config_fname[MAX_PATH_LEN] = { 0 };
     char config_fcontent[MAX_CONFIG_FILE_SIZE] = { 0 };
     char config_fcontent_updated[MAX_CONFIG_FILE_SIZE] = { 0 };
 
-    rc = snprintf(
+    ret = snprintf(
         config_fname, sizeof(config_fname), "%s/configuration.json", mountpoint->mnt_point);
-    if (rc >= sizeof(config_fname)) {
-        LOG_ERR("FAIL: snprinf [rd:%d]", rc);
+    if (ret >= sizeof(config_fname)) {
+        LOG_ERR("FAIL: snprinf [rd:%d]", ret);
         goto out;
     }
 
-    rc = read_configuration_file(config_fname, config_fcontent);
-    if (rc < 0) {
-        LOG_ERR("FAIL: read configuration file [rd:%d]", rc);
+    ret = read_configuration_file(config_fname, config_fcontent);
+    if (ret < 0) {
+        LOG_ERR("FAIL: read configuration file [rd:%d]", ret);
         goto out;
     }
-    LOG_DBG("%s read content:%s (bytes: %d)", config_fname, config_fcontent, rc);
+    LOG_DBG("%s read content:%s (bytes: %d)", config_fname, config_fcontent, ret);
 
-    rc = update_wifi_configuration(
+    ret = update_wifi_configuration(
         config_fcontent, ssid, pwd, config_fcontent_updated, MAX_CONFIG_FILE_SIZE);
-    if (rc != 0) {
-        LOG_ERR("FAIL: updated wifi configuration [rd:%d]", rc);
+    if (ret != 0) {
+        LOG_ERR("FAIL: updated wifi configuration [rd:%d]", ret);
         goto out;
     }
-    rc = write_configuration_file(config_fname, config_fcontent_updated);
-    if (rc < 0) {
-        LOG_ERR("FAIL: write new wifi configuration [rd:%d]", rc);
+    ret = write_configuration_file(config_fname, config_fcontent_updated);
+    if (ret < 0) {
+        LOG_ERR("FAIL: write new wifi configuration [rd:%d]", ret);
         goto out;
     }
     LOG_DBG("%s", config_fcontent_updated);
 
 out:
-    return (rc < 0) ? -1 : 0;
+    return (ret < 0) ? -1 : 0;
 }
 #endif
 
@@ -213,57 +213,57 @@ static int read_configuration_file(
     char fname[static MAX_PATH_LEN], char fcontent[static MAX_CONFIG_FILE_SIZE])
 {
     struct fs_file_t file;
-    int rc, ret;
+    int ret;
 
     fs_file_t_init(&file);
-    rc = fs_open(&file, fname, FS_O_READ);
-    if (rc < 0) {
-        LOG_ERR("FAIL: open %s: %d", fname, rc);
-        return rc;
+    ret = fs_open(&file, fname, FS_O_READ);
+    if (ret < 0) {
+        LOG_ERR("FAIL: open %s: %d", fname, ret);
+        return ret;
     }
 
-    rc = fs_read(&file, fcontent, MAX_CONFIG_FILE_SIZE);
-    if (rc <= 0) {
-        LOG_ERR("FAIL: read %s: [rd:%d]", fname, rc);
+    ret = fs_read(&file, fcontent, MAX_CONFIG_FILE_SIZE);
+    if (ret <= 0) {
+        LOG_ERR("FAIL: read %s: [rd:%d]", fname, ret);
         goto out;
     }
 
 out:
-    ret = fs_close(&file);
-    if (ret < 0) {
-        LOG_ERR("FAIL: close %s: %d", fname, ret);
-        return ret;
+    int close_ret = fs_close(&file);
+    if (close_ret < 0) {
+        LOG_ERR("FAIL: close %s: %d", fname, close_ret);
+        return close_ret;
     }
 
-    return rc;
+    return ret;
 }
 static int write_configuration_file(
     char fname[static MAX_PATH_LEN], char fcontent[static MAX_CONFIG_FILE_SIZE])
 {
     struct fs_file_t file;
-    int rc, ret;
+    int ret;
 
     fs_file_t_init(&file);
-    rc = fs_open(&file, fname, FS_O_TRUNC | FS_O_WRITE);
-    if (rc < 0) {
-        LOG_ERR("FAIL: open %s: %d", fname, rc);
-        return rc;
+    ret = fs_open(&file, fname, FS_O_TRUNC | FS_O_WRITE);
+    if (ret < 0) {
+        LOG_ERR("FAIL: open %s: %d", fname, ret);
+        return ret;
     }
 
-    rc = fs_write(&file, fcontent, strnlen(fcontent, MAX_CONFIG_FILE_SIZE) + 1);
-    if (rc <= 0) {
-        LOG_ERR("FAIL: write %s: [rd:%d]", fname, rc);
+    ret = fs_write(&file, fcontent, strnlen(fcontent, MAX_CONFIG_FILE_SIZE) + 1);
+    if (ret <= 0) {
+        LOG_ERR("FAIL: write %s: [rd:%d]", fname, ret);
         goto out;
     }
 
 out:
-    ret = fs_close(&file);
-    if (ret < 0) {
-        LOG_ERR("FAIL: close %s: %d", fname, ret);
-        return ret;
+    int close_ret = fs_close(&file);
+    if (close_ret < 0) {
+        LOG_ERR("FAIL: close %s: %d", fname, close_ret);
+        return close_ret;
     }
 
-    return rc;
+    return ret;
 }
 
 static int parse_configuration_file(char *fcontent, struct sample_config *out_cfg)
@@ -339,10 +339,10 @@ static int update_wifi_configuration(char *fcontent,
     int expected_return_code = (1U << (size_t) ARRAY_SIZE(full_json_descr)) - 1;
     struct full_json_s parsed_json = { 0 };
 
-    int64_t ret = json_obj_parse(
+    int64_t ret_parse = json_obj_parse(
         fcontent, strlen(fcontent) + 1, full_json_descr, ARRAY_SIZE(full_json_descr), &parsed_json);
-    if (ret != expected_return_code) {
-        LOG_ERR("JSON Parse Error: %lld. Expected %d.", ret, expected_return_code);
+    if (ret_parse != expected_return_code) {
+        LOG_ERR("JSON Parse Error: %lld. Expected %d.", ret_parse, expected_return_code);
         return -1;
     }
     if (!parsed_json.deviceID) {
@@ -358,9 +358,9 @@ static int update_wifi_configuration(char *fcontent,
         .credentialSecret = parsed_json.credentialSecret,
         .wifiSsid = new_ssid,
         .wifiPassword = new_pwd };
-    int rc = json_obj_encode_buf(
+    int ret_encode = json_obj_encode_buf(
         full_json_descr, ARRAY_SIZE(full_json_descr), &updated_json, output_buffer, buffer_size);
-    if (rc < 0) {
+    if (ret_encode < 0) {
         LOG_ERR("Failed to encode updated JSON.");
         return -1;
     }
